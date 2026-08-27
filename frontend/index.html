@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Human Activity Recognition - UCI Smartphone Sensor Analysis</title>
+    <!-- Google Fonts: Outfit (headings) and Inter (body) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Main Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Loading Screen Overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-box">
+            <h1 class="loading-title">HUMAN ACTIVITY RECOGNITION</h1>
+            <p class="loading-subtitle">Initializing ML System</p>
+            <div class="loading-spinner"></div>
+            <ul class="loading-steps" id="loading-steps">
+                <li id="step-backend" class="pending">Checking Backend connection...</li>
+                <li id="step-dataset" class="pending">Verifying UCI HAR dataset...</li>
+                <li id="step-model" class="pending">Loading trained model engine...</li>
+            </ul>
+            <div id="loading-error" class="loading-error hidden">
+                <p id="error-message">Connection failed. Is the backend server running?</p>
+                <button id="btn-retry-init" class="btn btn-primary">Retry Initialization</button>
+                <button id="btn-train-init" class="btn btn-secondary hidden">Train Model Now</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Navigation Header -->
+    <header class="main-header">
+        <div class="header-container">
+            <div class="logo">
+                <span class="logo-title">HUMAN ACTIVITY RECOGNITION</span>
+                <span class="logo-subtitle">UCI Smartphone Sensor Analysis</span>
+            </div>
+            <nav class="main-nav">
+                <a href="#home" class="nav-link active">Home</a>
+                <a href="#predict" class="nav-link">Predict</a>
+                <a href="#sample-mode" class="nav-link">UCI Samples</a>
+                <a href="#live-sensor" class="nav-link">Live Sensor</a>
+                <a href="#model-dashboard" class="nav-link">Model</a>
+                <a href="#how-it-works" class="nav-link">How It Works</a>
+                <a href="#activities" class="nav-link">Activities</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main>
+
+        <!-- Home/Hero Section -->
+        <section id="home" class="section hero-section">
+            <div class="hero-container">
+                <div class="hero-content">
+                    <h1 class="hero-title">UNDERSTAND HUMAN MOVEMENT USING SENSOR DATA</h1>
+                    <p class="hero-subtitle">
+                        An advanced machine learning system trained on the official UCI Human Activity Recognition dataset, analyzing 561-dimensional smartphone sensor readings to classify activities with high accuracy.
+                    </p>
+                    <div class="hero-actions">
+                        <a href="#predict" class="btn btn-primary">Start Prediction</a>
+                        <a href="#model-dashboard" class="btn btn-secondary">View Performance</a>
+                    </div>
+                </div>
+                <div class="hero-visual">
+                    <div class="visual-box">
+                        <svg class="sensor-blueprint" viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="10" y="10" width="380" height="280" rx="6" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-dasharray="4 4"/>
+                            
+                            <!-- Phone outline -->
+                            <rect x="140" y="40" width="120" height="220" rx="16" fill="none" stroke="#334155" stroke-width="3"/>
+                            <rect x="145" y="45" width="110" height="210" rx="12" fill="none" stroke="#94a3b8" stroke-width="1"/>
+                            <circle cx="200" cy="55" r="3" fill="#334155"/>
+                            <rect x="180" y="245" width="40" height="4" rx="2" fill="#334155"/>
+                            
+                            <!-- Sensor axes lines -->
+                            <g class="blueprint-axes">
+                                <!-- X axis -->
+                                <line x1="200" y1="150" x2="310" y2="150" stroke="#2563eb" stroke-width="1.5" stroke-linecap="round"/>
+                                <polygon points="310,147 317,150 310,153" fill="#2563eb"/>
+                                <text x="325" y="154" font-family="'Outfit', sans-serif" font-size="11" fill="#2563eb" font-weight="600">X (Acc)</text>
+                                
+                                <!-- Y axis -->
+                                <line x1="200" y1="150" x2="200" y2="210" stroke="#0e7490" stroke-width="1.5" stroke-linecap="round"/>
+                                <polygon points="197,210 200,217 203,210" fill="#0e7490"/>
+                                <text x="188" y="232" font-family="'Outfit', sans-serif" font-size="11" fill="#0e7490" font-weight="600">Y (Gravity)</text>
+                                
+                                <!-- Z axis -->
+                                <line x1="200" y1="150" x2="160" y2="110" stroke="#475569" stroke-width="1.5" stroke-linecap="round"/>
+                                <polygon points="163,110 156,106 160,113" fill="#475569"/>
+                                <text x="112" y="104" font-family="'Outfit', sans-serif" font-size="11" fill="#475569" font-weight="600">Z (Gyro)</text>
+                            </g>
+                            
+                            <!-- Sensor data waves -->
+                            <path d="M 20 180 Q 40 120, 60 180 T 100 180 T 140 180" fill="none" stroke="#e2e8f0" stroke-width="2"/>
+                            <path d="M 260 120 Q 280 60, 300 120 T 340 120 T 380 120" fill="none" stroke="#e2e8f0" stroke-width="2"/>
+                            <circle cx="200" cy="150" r="5" fill="#2563eb"/>
+                        </svg>
+                        <div class="sensor-tag">Smartphone Sensor Array</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Main Prediction UI Section -->
+        <section id="predict" class="section predict-section">
+            <div class="section-header">
+                <h2 class="section-title">ACTIVITY PREDICTOR</h2>
+                <p class="section-subtitle">Describe the movement using simple observable characteristics to find and analyze real dataset observations.</p>
+            </div>
+            
+            <div class="predictor-grid">
+                <!-- Input Panel -->
+                <div class="input-panel">
+                    <h3 class="panel-title">Questionnaire</h3>
+                    <p class="panel-desc">Adjust the parameters to select matching smartphone recordings from the real UCI test set.</p>
+                    
+                    <form id="predictor-form" class="predictor-form" onsubmit="event.preventDefault();">
+                        <!-- Control 1: Movement Intensity -->
+                        <div class="control-group">
+                            <label class="control-label">1. Movement Intensity</label>
+                            <span class="control-help">Specifies the overall amplitude of linear body acceleration.</span>
+                            <div class="segmented-control" id="ctrl-intensity">
+                                <button type="button" class="segment-btn" data-value="Low">Low</button>
+                                <button type="button" class="segment-btn active" data-value="Medium">Medium</button>
+                                <button type="button" class="segment-btn" data-value="High">High</button>
+                            </div>
+                        </div>
+
+                        <!-- Control 2: Movement Stability -->
+                        <div class="control-group">
+                            <label class="control-label">2. Movement Stability</label>
+                            <span class="control-help">Measures signal jerkiness or sudden changes in acceleration.</span>
+                            <div class="segmented-control" id="ctrl-stability">
+                                <button type="button" class="segment-btn" data-value="Low">Low</button>
+                                <button type="button" class="segment-btn active" data-value="Medium">Medium</button>
+                                <button type="button" class="segment-btn" data-value="High">High</button>
+                            </div>
+                        </div>
+
+                        <!-- Control 3: Body Position -->
+                        <div class="control-group">
+                            <label class="control-label">3. Body Position</label>
+                            <span class="control-help">The orientation of the device relative to gravity.</span>
+                            <div class="segmented-control" id="ctrl-position">
+                                <button type="button" class="segment-btn" data-value="Lying">Lying</button>
+                                <button type="button" class="segment-btn" data-value="Sitting">Sitting</button>
+                                <button type="button" class="segment-btn active" data-value="Standing">Standing</button>
+                            </div>
+                        </div>
+
+                        <!-- Control 4: Rotation -->
+                        <div class="control-group">
+                            <label class="control-label">4. Rotation Intensity</label>
+                            <span class="control-help">Measures rotational velocity (angular speed) from the gyroscope.</span>
+                            <div class="segmented-control" id="ctrl-rotation">
+                                <button type="button" class="segment-btn" data-value="Low">Low</button>
+                                <button type="button" class="segment-btn active" data-value="Moderate">Moderate</button>
+                                <button type="button" class="segment-btn" data-value="High">High</button>
+                            </div>
+                        </div>
+
+                        <!-- Control 5: Movement Pattern -->
+                        <div class="control-group">
+                            <label class="control-label">5. Movement Pattern</label>
+                            <span class="control-help">The rhythmicity or periodicity of the movement.</span>
+                            <div class="segmented-control" id="ctrl-pattern">
+                                <button type="button" class="segment-btn" data-value="Still">Still</button>
+                                <button type="button" class="segment-btn active" data-value="Regular">Regular</button>
+                                <button type="button" class="segment-btn" data-value="Rhythmic">Rhythmic</button>
+                            </div>
+                        </div>
+
+                        <button id="btn-predict" class="btn btn-primary btn-block btn-large">ANALYZE ACTIVITY</button>
+                    </form>
+                </div>
+                
+                <!-- Result Panel -->
+                <div class="result-panel">
+                    <h3 class="panel-title">Analysis Result</h3>
+                    <div id="result-placeholder" class="result-placeholder">
+                        <div class="placeholder-icon">📊</div>
+                        <p>Configure the physical descriptors and click <strong>Analyze Activity</strong> to run machine learning predictions on matching records.</p>
+                    </div>
+
+                    <!-- Prediction Success Card -->
+                    <div id="result-success" class="result-card hidden">
+                        <div class="result-header">
+                            <span class="result-header-label">DETECTED ACTIVITY</span>
+                            <h2 id="result-activity-name" class="result-activity-title">🚶 WALKING</h2>
+                            <div class="confidence-container">
+                                <span class="confidence-label">Model Confidence</span>
+                                <div class="confidence-bar-outer">
+                                    <div id="result-confidence-bar" class="confidence-bar-inner" style="width: 94.7%"></div>
+                                </div>
+                                <span id="result-confidence-text" class="confidence-value">94.7%</span>
+                            </div>
+                        </div>
+
+                        <div class="result-details">
+                            <h4 class="details-section-title">Query Parameters</h4>
+                            <div class="details-grid">
+                                <div class="detail-item">
+                                    <span class="detail-label">Intensity</span>
+                                    <span id="detail-intensity" class="detail-value">High</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Stability</span>
+                                    <span id="detail-stability" class="detail-value">Medium</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Body Position</span>
+                                    <span id="detail-position" class="detail-value">Standing</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Rotation</span>
+                                    <span id="detail-rotation" class="detail-value">Moderate</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Pattern</span>
+                                    <span id="detail-pattern" class="detail-value">Rhythmic</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Matched Records</span>
+                                    <span id="detail-matches" class="detail-value highlight-value">17</span>
+                                </div>
+                            </div>
+
+                            <div class="model-info-footer">
+                                <span>Model: <strong id="result-model-used">Support Vector Machine</strong></span>
+                            </div>
+
+                            <h4 class="details-section-title">Probability Distribution</h4>
+                            <div id="probabilities-chart" class="probabilities-chart">
+                                <!-- Bars will be added dynamically by JS -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- No Match Card -->
+                    <div id="result-no-match" class="result-card error-card hidden">
+                        <div class="error-icon">⚠️</div>
+                        <h3 class="error-title">INSUFFICIENT MATCHING DATA</h3>
+                        <p class="error-desc">No sufficiently similar real UCI sensor recordings were found in the test dataset matching these exact characteristics.</p>
+                        <div class="error-suggestions">
+                            <strong>Suggestions:</strong>
+                            <ul>
+                                <li>Set Intensity and Pattern to "Still" when selecting Sitting/Standing/Lying positions.</li>
+                                <li>Select "Standing" body position for Walking or Stairs activities.</li>
+                                <li>Avoid high rotation with Still patterns.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Real UCI Sample Validation Section -->
+        <section id="sample-mode" class="section sample-section">
+            <div class="section-header">
+                <h2 class="section-title">ANALYZE REAL UCI RECORDING</h2>
+                <p class="section-subtitle">Directly load individual 561-dimensional rows from the official test dataset (`X_test`) to evaluate model predictions against ground truth (`y_test`).</p>
+            </div>
+
+            <div class="sample-grid">
+                <!-- Sample Selector -->
+                <div class="sample-control-card">
+                    <h3 class="panel-title">Sample Selection</h3>
+                    <p class="panel-desc">Choose a test sample between index 1 and 2,947 to inspect. The backend loads the exact feature vector from `X_test.txt` and queries the ML model.</p>
+                    
+                    <div class="sample-input-group">
+                        <label for="input-sample-id" class="control-label">Test Sample Index (1 - 2,947)</label>
+                        <div class="input-with-btn">
+                            <input type="number" id="input-sample-id" min="1" max="2947" value="890" class="input-text">
+                            <button id="btn-random-sample" class="btn btn-secondary">Random</button>
+                        </div>
+                    </div>
+                    <button id="btn-predict-sample" class="btn btn-primary btn-block">ANALYZE SENSOR RECORDING</button>
+                </div>
+
+                <!-- Sample Result Panel -->
+                <div class="sample-result-card">
+                    <h3 class="panel-title">Verification Results</h3>
+                    
+                    <div id="sample-placeholder" class="result-placeholder">
+                        <div class="placeholder-icon">🔬</div>
+                        <p>Select a sample index and click <strong>Analyze Sensor Recording</strong> to inspect the row data and model decision.</p>
+                    </div>
+
+                    <div id="sample-result-display" class="hidden">
+                        <div class="sample-result-header">
+                            <div class="sample-badge">Sample #<span id="lbl-sample-id">890</span></div>
+                            <div class="sample-badge accent">Features: <span id="lbl-features-count">561</span></div>
+                        </div>
+
+                        <div class="comparison-boxes">
+                            <div class="comp-box">
+                                <span class="comp-label">PREDICTED ACTIVITY</span>
+                                <span id="lbl-predicted-activity" class="comp-value text-blue">WALKING_UPSTAIRS</span>
+                                <span class="comp-sublabel">Confidence: <span id="lbl-sample-confidence">94.82%</span></span>
+                            </div>
+                            <div class="comp-box border-left">
+                                <span class="comp-label">ACTUAL GROUND TRUTH</span>
+                                <span id="lbl-actual-activity" class="comp-value">WALKING_UPSTAIRS</span>
+                                <span id="lbl-validation-status" class="validation-status status-correct">✓ CORRECT</span>
+                            </div>
+                        </div>
+
+                        <div class="sample-details">
+                            <h4 class="details-section-title">Top Sample Probabilities</h4>
+                            <div id="sample-probabilities" class="probabilities-chart">
+                                <!-- Dynamic bars -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Live Sensor Mode Section -->
+        <section id="live-sensor" class="section live-section">
+            <div class="section-header">
+                <h2 class="section-title">LIVE SENSOR PREDICTOR</h2>
+                <p class="section-subtitle">Use your smartphone's built-in accelerometer and gyroscope for real-time activity classification. A window of readings is analyzed to find the nearest UCI recordings, which are then classified by the trained ML model.</p>
+            </div>
+
+            <div class="live-pipeline-banner">
+                <div class="pipeline-step-mini">📱 Phone Sensor</div>
+                <div class="pipeline-arrow-mini">→</div>
+                <div class="pipeline-step-mini">📊 Window Statistics</div>
+                <div class="pipeline-arrow-mini">→</div>
+                <div class="pipeline-step-mini">🔍 UCI Nearest Neighbors</div>
+                <div class="pipeline-arrow-mini">→</div>
+                <div class="pipeline-step-mini">🤖 ML Model (561 Features)</div>
+                <div class="pipeline-arrow-mini">→</div>
+                <div class="pipeline-step-mini">✅ Prediction</div>
+            </div>
+
+            <div class="live-grid">
+                <!-- Left Panel: Sensor Data + Controls -->
+                <div class="live-control-card">
+                    <!-- Permission state -->
+                    <div id="live-permission-state">
+                        <h3 class="panel-title">Sensor Access</h3>
+                        <p class="panel-desc">This mode uses your device's motion sensors via the browser DeviceMotion API. <strong>Open this page on your phone</strong> and grant permission to begin.</p>
+
+                        <div class="sensor-support-note" id="live-support-note">
+                            <span id="live-support-text">Checking device sensor support...</span>
+                        </div>
+
+                        <button id="btn-request-sensor" class="btn btn-primary btn-block" style="margin-top:1.5rem;">REQUEST SENSOR ACCESS</button>
+                        <div id="live-sensor-error" class="live-error-msg hidden"></div>
+                    </div>
+
+                    <!-- Active Sensor Feed -->
+                    <div id="live-active-state" class="hidden">
+                        <h3 class="panel-title">Live Sensor Feed</h3>
+                        <div class="sensor-grid">
+                            <div class="sensor-block">
+                                <div class="sensor-block-label">ACCELEROMETER  <span class="sensor-block-unit">m/s²</span></div>
+                                <div class="sensor-axes">
+                                    <div class="sensor-axis">
+                                        <span class="axis-name">X</span>
+                                        <div class="axis-bar-outer"><div id="live-acc-bar-x" class="axis-bar-inner axis-x"></div></div>
+                                        <span id="live-acc-x" class="axis-val">0.00</span>
+                                    </div>
+                                    <div class="sensor-axis">
+                                        <span class="axis-name">Y</span>
+                                        <div class="axis-bar-outer"><div id="live-acc-bar-y" class="axis-bar-inner axis-y"></div></div>
+                                        <span id="live-acc-y" class="axis-val">0.00</span>
+                                    </div>
+                                    <div class="sensor-axis">
+                                        <span class="axis-name">Z</span>
+                                        <div class="axis-bar-outer"><div id="live-acc-bar-z" class="axis-bar-inner axis-z"></div></div>
+                                        <span id="live-acc-z" class="axis-val">0.00</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="sensor-block">
+                                <div class="sensor-block-label">GYROSCOPE  <span class="sensor-block-unit">rad/s</span></div>
+                                <div class="sensor-axes">
+                                    <div class="sensor-axis">
+                                        <span class="axis-name">X</span>
+                                        <div class="axis-bar-outer"><div id="live-gyr-bar-x" class="axis-bar-inner axis-x"></div></div>
+                                        <span id="live-gyr-x" class="axis-val">0.00</span>
+                                    </div>
+                                    <div class="sensor-axis">
+                                        <span class="axis-name">Y</span>
+                                        <div class="axis-bar-outer"><div id="live-gyr-bar-y" class="axis-bar-inner axis-y"></div></div>
+                                        <span id="live-gyr-y" class="axis-val">0.00</span>
+                                    </div>
+                                    <div class="sensor-axis">
+                                        <span class="axis-name">Z</span>
+                                        <div class="axis-bar-outer"><div id="live-gyr-bar-z" class="axis-bar-inner axis-z"></div></div>
+                                        <span id="live-gyr-z" class="axis-val">0.00</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Window accumulation indicator -->
+                        <div class="window-accumulator">
+                            <div class="window-label">
+                                <span>Sampling Window</span>
+                                <span id="live-sample-count">0 / 50 samples</span>
+                            </div>
+                            <div class="window-bar-outer">
+                                <div id="live-window-bar" class="window-bar-inner"></div>
+                            </div>
+                            <p class="window-hint">Keep a consistent motion for at least 1 second for best results.</p>
+                        </div>
+
+                        <div class="live-controls-row">
+                            <button id="btn-live-toggle" class="btn btn-secondary btn-block">⏸ Pause Sensor</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Live Prediction Result -->
+                <div class="live-result-card">
+                    <h3 class="panel-title">Live Prediction</h3>
+                    
+                    <div id="live-result-placeholder" class="result-placeholder" style="min-height:300px;">
+                        <div class="placeholder-icon">📡</div>
+                        <p>Waiting for sensor access. Grant permission and hold your phone to begin classifying activity.</p>
+                    </div>
+
+                    <div id="live-result-display" class="hidden">
+                        <!-- Auto-refresh badge -->
+                        <div class="live-refresh-badge">
+                            <span class="live-dot"></span> Updating every 1.5s
+                        </div>
+
+                        <div class="live-result-header">
+                            <span class="result-header-label">DETECTED ACTIVITY</span>
+                            <h2 id="live-activity-name" class="result-activity-title">🚶 WALKING</h2>
+                            <div class="confidence-container">
+                                <span class="confidence-label">Model Confidence</span>
+                                <div class="confidence-bar-outer">
+                                    <div id="live-confidence-bar" class="confidence-bar-inner" style="width: 0%"></div>
+                                </div>
+                                <span id="live-confidence-text" class="confidence-value">0%</span>
+                            </div>
+                        </div>
+
+                        <div class="live-probabilities-section">
+                            <h4 class="details-section-title">Probability Distribution</h4>
+                            <div id="live-probabilities-chart" class="probabilities-chart"></div>
+                        </div>
+
+                        <div class="live-meta-row">
+                            <span>Matched UCI records: <strong id="live-matched">30</strong></span>
+                            <span>Model: <strong id="live-model-name">SVM</strong></span>
+                        </div>
+
+                        <div class="live-disclaimer">
+                            <strong>How this works:</strong> Your device's motion is captured as raw accelerometer + gyroscope readings. The browser computes aggregate statistics (SMA, std-dev, gravity components) from a 50-sample window. These statistics are sent to the backend where a nearest-neighbor search finds the 30 most similar UCI test recordings. Those recordings' full 561-feature vectors are classified by the trained SVM. The raw readings from your phone <em>never</em> enter the model directly.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Model Dashboard Section -->
+
+        <section id="model-dashboard" class="section model-section">
+            <div class="section-header">
+                <h2 class="section-title">MODEL DASHBOARD</h2>
+                <p class="section-subtitle">Real-time statistics and training evaluation metrics saved in the system metadata.</p>
+            </div>
+
+            <div class="dashboard-grid">
+                <!-- Metadata table -->
+                <div class="metadata-card">
+                    <h3 class="panel-title">Performance Metrics</h3>
+                    <div class="metadata-table-container">
+                        <table class="metadata-table">
+                            <tbody>
+                                <tr>
+                                    <td>Training Samples</td>
+                                    <td id="meta-train-samples" class="font-mono">-</td>
+                                </tr>
+                                <tr>
+                                    <td>Testing Samples</td>
+                                    <td id="meta-test-samples" class="font-mono">-</td>
+                                </tr>
+                                <tr>
+                                    <td>Features Count</td>
+                                    <td id="meta-features" class="font-mono">-</td>
+                                </tr>
+                                <tr>
+                                    <td>Activities (Classes)</td>
+                                    <td id="meta-activities" class="font-mono">-</td>
+                                </tr>
+                                <tr>
+                                    <td>Best Selected Model</td>
+                                    <td id="meta-best-model" class="font-bold text-blue">-</td>
+                                </tr>
+                                <tr>
+                                    <td>Accuracy</td>
+                                    <td id="meta-accuracy" class="font-mono font-bold text-green">-</td>
+                                </tr>
+                                <tr>
+                                    <td>Precision (Weighted)</td>
+                                    <td id="meta-precision" class="font-mono">-</td>
+                                </tr>
+                                <tr>
+                                    <td>Recall (Weighted)</td>
+                                    <td id="meta-recall" class="font-mono">-</td>
+                                </tr>
+                                <tr>
+                                    <td>F1-Score (Weighted)</td>
+                                    <td id="meta-f1" class="font-mono">-</td>
+                                </tr>
+                                <tr>
+                                    <td>Training Time</td>
+                                    <td id="meta-train-time" class="font-mono">-</td>
+                                </tr>
+                                <tr>
+                                    <td>Prediction Latency (Test Set)</td>
+                                    <td id="meta-pred-time" class="font-mono">-</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="retrain-container">
+                        <button id="btn-retrain" class="btn btn-secondary btn-block">Retrain Model Pipeline</button>
+                        <div id="retrain-status" class="retrain-status hidden">
+                            <span class="spinner-small"></span> Training models... (Logistic Regression, Decision Tree, Random Forest, SVM)
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Display -->
+                <div class="charts-card">
+                    <h3 class="panel-title">Model Visualizations</h3>
+                    <div class="tabs-container">
+                        <div class="tab-buttons">
+                            <button class="tab-btn active" data-tab="tab-cm">Confusion Matrix</button>
+                            <button class="tab-btn" data-tab="tab-compare">Model Comparison</button>
+                            <button class="tab-btn" data-tab="tab-dist">Activity Distribution</button>
+                        </div>
+                        <div class="tab-content active" id="tab-cm">
+                            <img id="img-confusion-matrix" src="" alt="Confusion Matrix Chart" class="chart-img">
+                            <p class="chart-caption">Confusion matrix for the selected model. Displays counts of correct classifications vs misclassifications per class.</p>
+                        </div>
+                        <div class="tab-content" id="tab-compare">
+                            <img id="img-model-comparison" src="" alt="Model Comparison Chart" class="chart-img">
+                            <p class="chart-caption">Accuracy comparison across all tested machine learning algorithms on the official test set.</p>
+                        </div>
+                        <div class="tab-content" id="tab-dist">
+                            <img id="img-activity-distribution" src="" alt="Activity Distribution Chart" class="chart-img">
+                            <p class="chart-caption">Counts of observation samples representing each activity in the training dataset.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- How It Works Section -->
+        <section id="how-it-works" class="section pipeline-section">
+            <div class="section-header">
+                <h2 class="section-title">HOW IT WORKS</h2>
+                <p class="section-subtitle">Understanding the signal processing and machine learning pipeline.</p>
+            </div>
+
+            <div class="pipeline-container">
+                <div class="pipeline-flow">
+                    <div class="flow-step">
+                        <div class="step-num">1</div>
+                        <h4 class="step-title">Smartphone Sensors</h4>
+                        <p class="step-text">Triaxial raw accelerometer (linear acceleration) and gyroscope (angular velocity) signals captured at 50 Hz.</p>
+                    </div>
+                    <div class="flow-arrow">↓</div>
+                    <div class="flow-step">
+                        <div class="step-num">2</div>
+                        <h4 class="step-title">Signal Processing</h4>
+                        <p class="step-text">Noise filtering and gravity/body acceleration separation using low-pass Butterworth filters (0.3 Hz corner).</p>
+                    </div>
+                    <div class="flow-arrow">↓</div>
+                    <div class="flow-step">
+                        <div class="step-num">3</div>
+                        <h4 class="step-title">Feature Engineering</h4>
+                        <p class="step-text">Extraction of 561 time and frequency domain variables (mean, standard deviation, entropy, autoregression, etc.).</p>
+                    </div>
+                    <div class="flow-arrow">↓</div>
+                    <div class="flow-step">
+                        <div class="step-num">4</div>
+                        <h4 class="step-title">Trained ML Model</h4>
+                        <p class="step-text">Multi-class classification using an optimized Support Vector Machine (SVM) running on the 561 features.</p>
+                    </div>
+                    <div class="flow-arrow">↓</div>
+                    <div class="flow-step">
+                        <div class="step-num">5</div>
+                        <h4 class="step-title">Activity Prediction</h4>
+                        <p class="step-text">Output of final predicted activity name along with exact class probability distribution.</p>
+                    </div>
+                </div>
+
+                <div class="scientific-rule-box">
+                    <h4 class="rule-title">🔬 Scientific Note on Sensor Compatibility</h4>
+                    <p class="rule-text">
+                        <strong>Important:</strong> This web application uses real recorded smartphone sensor data from the official UCI dataset. It does not pull live readings from your phone's browser.
+                    </p>
+                    <p class="rule-text">
+                        To support live phone integration, raw values (Acc X/Y/Z, Gyro X/Y/Z) cannot be directly fed into the model. They must first undergo windowing and identical digital signal processing (DSP) to extract the exact 561 features on which the SVM was trained.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Activities Reference Section -->
+        <section id="activities" class="section activities-section">
+            <div class="section-header">
+                <h2 class="section-title">THE SIX CLASSIFIED ACTIVITIES</h2>
+                <p class="section-subtitle">Review characteristics of each classified physical movement.</p>
+            </div>
+
+            <div class="activities-grid" id="activities-cards-container">
+                <!-- Activities loaded dynamically via API, fallback static below -->
+                <div class="activity-card">
+                    <div class="activity-icon">🚶</div>
+                    <h3 class="activity-name">Walking</h3>
+                    <p class="activity-description">Dynamic cyclic gait on flat ground. Marked by regular body acceleration peaks and moderate rotation velocity.</p>
+                </div>
+                <div class="activity-card">
+                    <div class="activity-icon">⬆️</div>
+                    <h3 class="activity-name">Walking Upstairs</h3>
+                    <p class="activity-description">Dynamic traversal upward. Shows higher body acceleration intensity and moderate orientation deviation.</p>
+                </div>
+                <div class="activity-card">
+                    <div class="activity-icon">⬇️</div>
+                    <h3 class="activity-name">Walking Downstairs</h3>
+                    <p class="activity-description">Downward descent with high impact peaks. Typically exhibits maximum acceleration variation (low stability).</p>
+                </div>
+                <div class="activity-card">
+                    <div class="activity-icon">🪑</div>
+                    <h3 class="activity-name">Sitting</h3>
+                    <p class="activity-description">Static seated position. Minimal body acceleration, highly stable gravity alignment along vertical axes.</p>
+                </div>
+                <div class="activity-card">
+                    <div class="activity-icon">🧍</div>
+                    <h3 class="activity-name">Standing</h3>
+                    <p class="activity-description">Static standing position. Very low motion amplitude, stable vertical alignment of the phone.</p>
+                </div>
+                <div class="activity-card">
+                    <div class="activity-icon">🛏️</div>
+                    <h3 class="activity-name">Lying</h3>
+                    <p class="activity-description">Static horizontal orientation. Gravity vector shifts completely along horizontal axes of the phone.</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="main-footer">
+        <div class="footer-container">
+            <p>&copy; 2026 Human Activity Recognition College Project. Trained on the UCI Smartphone Sensor Dataset (UCI Dataset 240).</p>
+            <p class="footer-subtext">Developed using Flask, Scikit-Learn, and Vanilla CSS3.</p>
+        </div>
+    </footer>
+
+    <!-- Interactive script -->
+    <script src="script.js"></script>
+</body>
+</html>
