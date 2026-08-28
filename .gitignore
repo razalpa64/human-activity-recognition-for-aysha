@@ -14,8 +14,7 @@ venv/
 .venv/
 pip-wheel-metadata/
 
-# Ignore raw dataset text dumps and npy caches to prevent git HTTP push timeouts
-dataset/
+# Ignore npy caches
 *.npy
 
 # IDE
