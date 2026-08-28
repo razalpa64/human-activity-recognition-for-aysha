@@ -14,16 +14,9 @@ venv/
 .venv/
 pip-wheel-metadata/
 
-# Environment
-.env
-.env.local
-
-# Dataset (must be placed manually)
+# Ignore raw dataset text dumps and npy caches to prevent git HTTP push timeouts
 dataset/
-
-# Trained model files
-models/*.pkl
-models/*.joblib
+*.npy
 
 # IDE
 .vscode/

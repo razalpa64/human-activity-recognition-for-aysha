@@ -29,23 +29,23 @@ const activityEmojis = {
 // ========================================================
 
 const liveSensor = {
-    // Raw sensor reading buffers (sliding window of up to WINDOW_SIZE samples)
-    WINDOW_SIZE: 50,
-    accBuffer: [],     // [{x, y, z}]
-    gyrBuffer: [],     // [{x, y, z}]
-    gravBuffer: [],    // [{x, y, z}]  (from deviceorientation)
+    WINDOW_SIZE: 128,          // 128 samples at 50 Hz = 2.56 seconds
+    accBuffer: [],             // [{x, y, z, t}]
+    gyrBuffer: [],             // [{x, y, z, t}]
     
     active: false,
     paused: false,
     predictionInterval: null,
-    predictionIntervalMs: 1500,
+    predictionIntervalMs: 1000,
     
-    // DOM elements cache
+    rotationMatrix: null,      // 3x3 array if calibrated
+    predictionHistory: [],     // Rolling buffer of last 5 prediction objects for temporal smoothing
+    activityHistory: [],       // Log of recent activities with timestamps
+
     elements: {},
 };
 
 function initLiveSensor() {
-    // Cache element references
     liveSensor.elements = {
         supportNote: document.getElementById('live-support-note'),
         supportText: document.getElementById('live-support-text'),
@@ -54,10 +54,16 @@ function initLiveSensor() {
         requestBtn: document.getElementById('btn-request-sensor'),
         errorMsg: document.getElementById('live-sensor-error'),
         toggleBtn: document.getElementById('btn-live-toggle'),
+        calibrateBtn: document.getElementById('btn-calibrate'),
+        debugBtn: document.getElementById('btn-toggle-debug'),
         sampleCount: document.getElementById('live-sample-count'),
         windowBar: document.getElementById('live-window-bar'),
         
-        // Acc readings
+        statusAcc: document.getElementById('status-acc'),
+        statusGyro: document.getElementById('status-gyro'),
+        statusSampling: document.getElementById('status-sampling'),
+        statusWindowCount: document.getElementById('status-window-count'),
+        
         accX: document.getElementById('live-acc-x'),
         accY: document.getElementById('live-acc-y'),
         accZ: document.getElementById('live-acc-z'),
@@ -65,7 +71,6 @@ function initLiveSensor() {
         accBarY: document.getElementById('live-acc-bar-y'),
         accBarZ: document.getElementById('live-acc-bar-z'),
         
-        // Gyro readings
         gyrX: document.getElementById('live-gyr-x'),
         gyrY: document.getElementById('live-gyr-y'),
         gyrZ: document.getElementById('live-gyr-z'),
@@ -73,34 +78,40 @@ function initLiveSensor() {
         gyrBarY: document.getElementById('live-gyr-bar-y'),
         gyrBarZ: document.getElementById('live-gyr-bar-z'),
         
-        // Prediction result
         resultPlaceholder: document.getElementById('live-result-placeholder'),
         resultDisplay: document.getElementById('live-result-display'),
         activityName: document.getElementById('live-activity-name'),
         confidenceBar: document.getElementById('live-confidence-bar'),
         confidenceText: document.getElementById('live-confidence-text'),
         probChart: document.getElementById('live-probabilities-chart'),
-        matchedCount: document.getElementById('live-matched'),
         modelName: document.getElementById('live-model-name'),
+        historyList: document.getElementById('live-history-list'),
+        
+        // Debug Card
+        debugCard: document.getElementById('debug-info-card'),
+        dbgSamples: document.getElementById('dbg-samples'),
+        dbgRate: document.getElementById('dbg-rate'),
+        dbgWindow: document.getElementById('dbg-window'),
+        dbgFeatCount: document.getElementById('dbg-feat-count'),
+        dbgFeatExpected: document.getElementById('dbg-feat-expected'),
+        dbgModel: document.getElementById('dbg-model'),
+        dbgScaler: document.getElementById('dbg-scaler'),
+        dbgCalibration: document.getElementById('dbg-calibration'),
     };
 
-    // Check if DeviceMotion is supported
     if (window.DeviceMotionEvent) {
-        const noteEl = liveSensor.elements.supportNote;
-        const textEl = liveSensor.elements.supportText;
-        noteEl.className = 'sensor-support-note supported';
-        textEl.textContent = '✓ DeviceMotion sensor API supported on this device/browser.';
+        liveSensor.elements.supportNote.className = 'sensor-support-note supported';
+        liveSensor.elements.supportText.textContent = '✓ DeviceMotion sensor API supported on this device/browser.';
     } else {
-        const noteEl = liveSensor.elements.supportNote;
-        const textEl = liveSensor.elements.supportText;
-        noteEl.className = 'sensor-support-note not-supported';
-        textEl.textContent = '✗ DeviceMotion API is not available. Use a mobile browser (Chrome/Safari on phone).';
+        liveSensor.elements.supportNote.className = 'sensor-support-note not-supported';
+        liveSensor.elements.supportText.textContent = '✗ DeviceMotion API is not available. Use a mobile browser (Chrome/Safari on phone).';
         liveSensor.elements.requestBtn.disabled = true;
     }
 
-    // Request permission button
     liveSensor.elements.requestBtn.addEventListener('click', requestSensorAccess);
-    liveSensor.elements.toggleBtn.addEventListener('click', toggleSensorPause);
+    if (liveSensor.elements.toggleBtn) liveSensor.elements.toggleBtn.addEventListener('click', toggleSensorPause);
+    if (liveSensor.elements.calibrateBtn) liveSensor.elements.calibrateBtn.addEventListener('click', triggerCalibration);
+    if (liveSensor.elements.debugBtn) liveSensor.elements.debugBtn.addEventListener('click', toggleDebugMode);
 }
 
 async function requestSensorAccess() {
@@ -109,7 +120,6 @@ async function requestSensorAccess() {
     btn.textContent = 'Requesting...';
     
     try {
-        // iOS 13+ requires explicit permission request
         if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
             const motionPermission = await DeviceMotionEvent.requestPermission();
             if (motionPermission !== 'granted') {
@@ -120,16 +130,12 @@ async function requestSensorAccess() {
             }
         }
         
-        // Attach event listeners
         window.addEventListener('devicemotion', handleDeviceMotion, true);
-        window.addEventListener('deviceorientation', handleDeviceOrientation, true);
         
-        // Show active state
         liveSensor.elements.permState.classList.add('hidden');
         liveSensor.elements.activeState.classList.remove('hidden');
         liveSensor.active = true;
         
-        // Start prediction loop
         liveSensor.predictionInterval = setInterval(submitLivePrediction, liveSensor.predictionIntervalMs);
         
     } catch (e) {
@@ -145,84 +151,54 @@ function handleDeviceMotion(event) {
     
     const acc = event.accelerationIncludingGravity || event.acceleration;
     const rot = event.rotationRate;
+    const now = performance.now();
     
     if (!acc) return;
     
-    const x = acc.x || 0;
-    const y = acc.y || 0;
-    const z = acc.z || 0;
+    const ax = acc.x || 0;
+    const ay = acc.y || 0;
+    const az = acc.z || 0;
     
-    // Add to buffer
-    liveSensor.accBuffer.push({ x, y, z });
-    if (liveSensor.accBuffer.length > liveSensor.WINDOW_SIZE) {
+    liveSensor.accBuffer.push({ x: ax, y: ay, z: az, t: now });
+    if (liveSensor.accBuffer.length > liveSensor.WINDOW_SIZE * 2) {
         liveSensor.accBuffer.shift();
     }
     
-    // Gyroscope
+    let gx = 0, gy = 0, gz = 0;
     if (rot) {
-        const gx = (rot.alpha || 0) * Math.PI / 180;
-        const gy = (rot.beta  || 0) * Math.PI / 180;
-        const gz = (rot.gamma || 0) * Math.PI / 180;
-        liveSensor.gyrBuffer.push({ x: gx, y: gy, z: gz });
-        if (liveSensor.gyrBuffer.length > liveSensor.WINDOW_SIZE) {
-            liveSensor.gyrBuffer.shift();
-        }
+        gx = (rot.alpha || 0) * Math.PI / 180;
+        gy = (rot.beta  || 0) * Math.PI / 180;
+        gz = (rot.gamma || 0) * Math.PI / 180;
+    }
+    liveSensor.gyrBuffer.push({ x: gx, y: gy, z: gz, t: now });
+    if (liveSensor.gyrBuffer.length > liveSensor.WINDOW_SIZE * 2) {
+        liveSensor.gyrBuffer.shift();
     }
     
-    // Update UI axis displays
-    updateAxisDisplay(x, y, z, 'acc');
+    updateAxisDisplay(ax, ay, az, 'acc');
+    updateAxisDisplay(gx, gy, gz, 'gyr');
     
-    // Update window bar progress
-    const pct = Math.min(100, (liveSensor.accBuffer.length / liveSensor.WINDOW_SIZE) * 100);
-    liveSensor.elements.windowBar.style.width = pct + '%';
-    liveSensor.elements.sampleCount.textContent = `${liveSensor.accBuffer.length} / ${liveSensor.WINDOW_SIZE} samples`;
-}
-
-function handleDeviceOrientation(event) {
-    if (liveSensor.paused) return;
+    const currentSamples = Math.min(liveSensor.WINDOW_SIZE, liveSensor.accBuffer.length);
+    const pct = Math.min(100, (currentSamples / liveSensor.WINDOW_SIZE) * 100);
     
-    // Use gamma/beta as proxies for gravity direction
-    const beta  = (event.beta  || 0) * Math.PI / 180;  // front-back tilt
-    const gamma = (event.gamma || 0) * Math.PI / 180;  // left-right tilt
-    
-    // Approximate gravity components (phone acceleration due to gravity)
-    // These are analogous to tGravityAcc-mean()-X and Y in the UCI feature set
-    const gx = Math.sin(gamma);
-    const gy = -Math.sin(beta) * Math.cos(gamma);
-    const gz = -Math.cos(beta) * Math.cos(gamma);
-    
-    liveSensor.gravBuffer.push({ x: gx, y: gy, z: gz });
-    if (liveSensor.gravBuffer.length > liveSensor.WINDOW_SIZE) {
-        liveSensor.gravBuffer.shift();
-    }
-    
-    // Update gyro display if we have gyro data from DeviceMotion
-    if (liveSensor.gyrBuffer.length > 0) {
-        const last = liveSensor.gyrBuffer[liveSensor.gyrBuffer.length - 1];
-        updateAxisDisplay(last.x, last.y, last.z, 'gyr');
-    }
+    if (liveSensor.elements.windowBar) liveSensor.elements.windowBar.style.width = pct + '%';
+    if (liveSensor.elements.sampleCount) liveSensor.elements.sampleCount.textContent = `${currentSamples} / ${liveSensor.WINDOW_SIZE} samples`;
+    if (liveSensor.elements.statusWindowCount) liveSensor.elements.statusWindowCount.textContent = `${currentSamples} / ${liveSensor.WINDOW_SIZE}`;
 }
 
 function updateAxisDisplay(x, y, z, type) {
-    // Map value range to bar width. 
-    // Accelerometer includes gravity ~9.8 m/s^2. We map [-15, 15] → [0%, 100%]
-    // Gyroscope in rad/s, map [-5, 5] → [0%, 100%]
     const maxVal = type === 'acc' ? 15 : 5;
-    
-    const toBar = (v) => {
-        const pct = ((v + maxVal) / (2 * maxVal)) * 100;
-        return Math.max(0, Math.min(100, pct));
-    };
+    const toBar = (v) => Math.max(0, Math.min(100, ((v + maxVal) / (2 * maxVal)) * 100));
     
     const el = liveSensor.elements;
-    if (type === 'acc') {
+    if (type === 'acc' && el.accX) {
         el.accX.textContent = x.toFixed(2);
         el.accY.textContent = y.toFixed(2);
         el.accZ.textContent = z.toFixed(2);
         el.accBarX.style.width = toBar(x) + '%';
         el.accBarY.style.width = toBar(y) + '%';
         el.accBarZ.style.width = toBar(z) + '%';
-    } else {
+    } else if (type === 'gyr' && el.gyrX) {
         el.gyrX.textContent = x.toFixed(3);
         el.gyrY.textContent = y.toFixed(3);
         el.gyrZ.textContent = z.toFixed(3);
@@ -235,142 +211,211 @@ function updateAxisDisplay(x, y, z, type) {
 function toggleSensorPause() {
     liveSensor.paused = !liveSensor.paused;
     const btn = liveSensor.elements.toggleBtn;
+    const statusSampling = liveSensor.elements.statusSampling;
     
     if (liveSensor.paused) {
-        btn.textContent = '▶ Resume Sensor';
+        btn.textContent = '▶ Start Detection';
         btn.classList.remove('btn-secondary');
         btn.classList.add('btn-primary');
+        if (statusSampling) {
+            statusSampling.textContent = 'Paused';
+            statusSampling.className = 'chip-val badge-paused';
+            statusSampling.style.color = '#eab308';
+        }
         clearInterval(liveSensor.predictionInterval);
     } else {
-        btn.textContent = '⏸ Pause Sensor';
+        btn.textContent = '⏹ Stop Detection';
         btn.classList.remove('btn-primary');
         btn.classList.add('btn-secondary');
+        if (statusSampling) {
+            statusSampling.textContent = 'Active (50 Hz)';
+            statusSampling.className = 'chip-val badge-active';
+            statusSampling.style.color = '#2563eb';
+        }
         liveSensor.predictionInterval = setInterval(submitLivePrediction, liveSensor.predictionIntervalMs);
     }
 }
 
-// Compute aggregate statistics from the sliding window buffers
-function computeWindowStats() {
-    const accBuf = liveSensor.accBuffer;
-    const gyrBuf = liveSensor.gyrBuffer;
-    const gravBuf = liveSensor.gravBuffer;
-    
-    if (accBuf.length < 10) return null;  // need at least 10 samples
-    
-    // Compute means
-    const accMeanX = accBuf.reduce((s, v) => s + v.x, 0) / accBuf.length;
-    const accMeanY = accBuf.reduce((s, v) => s + v.y, 0) / accBuf.length;
-    const accMeanZ = accBuf.reduce((s, v) => s + v.z, 0) / accBuf.length;
-    
-    // Compute standard deviations
-    const accStdX = Math.sqrt(accBuf.reduce((s, v) => s + (v.x - accMeanX) ** 2, 0) / accBuf.length);
-    const accStdY = Math.sqrt(accBuf.reduce((s, v) => s + (v.y - accMeanY) ** 2, 0) / accBuf.length);
-    const accStdZ = Math.sqrt(accBuf.reduce((s, v) => s + (v.z - accMeanZ) ** 2, 0) / accBuf.length);
-    
-    // Signal Magnitude Area (SMA): mean of |acc| across window
-    // UCI tBodyAcc-sma() is the integral of absolute values over the 3 axes, normalised to [-1, 1].
-    // We compute an equivalent by averaging the per-sample magnitudes and then mapping to [-1, 1] range.
-    // A completely still phone has ~9.8 m/s^2 on one axis. Walking typically adds ±3 m/s^2 variations.
-    // We map the acceleration SMA to UCI's normalised range by subtracting the gravity component estimate.
-    const gravMeanX = gravBuf.length > 0 ? gravBuf.reduce((s, v) => s + v.x, 0) / gravBuf.length : 0;
-    const gravMeanY = gravBuf.length > 0 ? gravBuf.reduce((s, v) => s + v.y, 0) / gravBuf.length : 0;
-    const gravMeanZ = gravBuf.length > 0 ? gravBuf.reduce((s, v) => s + v.z, 0) / gravBuf.length : -1;
-    
-    // Body acceleration (remove approximate gravity)
-    // g ≈ 9.81 m/s^2 - we use the gravity vector components to approximate
-    const G = 9.81;
-    const bodyBuf = accBuf.map(v => ({
-        x: v.x - gravMeanX * G,
-        y: v.y - gravMeanY * G,
-        z: v.z + gravMeanZ * G  // gravity sign convention
-    }));
-    
-    // SMA of body acceleration (normalised approximation)
-    const bodySmaRaw = bodyBuf.reduce((s, v) => s + (Math.abs(v.x) + Math.abs(v.y) + Math.abs(v.z)) / 3, 0) / bodyBuf.length;
-    
-    // Map raw SMA (0 = still, ~5+ = very active) to UCI [-1, 1] range
-    // UCI acc_sma: still ≈ -0.95, walking ≈ -0.15, vigorous ≈ +0.15
-    // Linear mapping: raw 0 → -1.0, raw 5.0 → +0.5
-    const accSma = Math.max(-1, Math.min(0.5, (bodySmaRaw / 5.0) * 1.5 - 1.0));
-    
-    // Gyroscope SMA
-    let gyrSma = -0.95;  // default: still
-    if (gyrBuf.length > 0) {
-        const gyrSmaRaw = gyrBuf.reduce((s, v) => s + (Math.abs(v.x) + Math.abs(v.y) + Math.abs(v.z)) / 3, 0) / gyrBuf.length;
-        // Map raw rad/s SMA (0=still, 1=walking) to UCI range. UCI gyro_sma: still≈-0.95, walking≈-0.25, vigorous≈-0.1
-        gyrSma = Math.max(-1, Math.min(0.0, (gyrSmaRaw * 1.5) - 1.0));
+async function triggerCalibration() {
+    if (liveSensor.accBuffer.length < 20) {
+        alert("Please wait a moment for sensor samples to accumulate before calibrating.");
+        return;
     }
     
-    // Compute standard deviations normalised to UCI range.
-    // Walking acc std ≈ 1–3 m/s^2. UCI acc-std: still≈-0.95, walking≈-0.2 to +0.2
-    const normStd = (s, maxRaw) => Math.max(-1, Math.min(1, (s / maxRaw) * 2 - 1));
+    const btn = liveSensor.elements.calibrateBtn;
+    btn.disabled = true;
+    btn.textContent = 'Calibrating...';
     
-    return {
-        acc_sma:   accSma,
-        gyr_sma:   gyrSma,
-        gravity_x: Math.max(-1, Math.min(1, gravMeanX)),
-        gravity_y: Math.max(-1, Math.min(1, gravMeanY)),
-        acc_std_x: normStd(accStdX, 4.0),
-        acc_std_y: normStd(accStdY, 4.0),
-        acc_std_z: normStd(accStdZ, 4.0),
-        // Additional stats (for future use)
-        acc_mean_x: accMeanX,
-        acc_mean_y: accMeanY,
-        acc_mean_z: accMeanZ,
-    };
+    const recent = liveSensor.accBuffer.slice(-50);
+    const mx = recent.reduce((s, v) => s + v.x, 0) / recent.length;
+    const my = recent.reduce((s, v) => s + v.y, 0) / recent.length;
+    const mz = recent.reduce((s, v) => s + v.z, 0) / recent.length;
+    
+    try {
+        const response = await fetch('/api/calibrate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ x: mx, y: my, z: mz })
+        });
+        
+        const data = await response.json();
+        if (data.status === 'success') {
+            liveSensor.rotationMatrix = data.rotation_matrix;
+            alert("✓ Phone orientation calibrated successfully! Sensor axes aligned with training reference.");
+            if (liveSensor.elements.dbgCalibration) {
+                liveSensor.elements.dbgCalibration.textContent = 'Active (3D Rodrigues Rotation Matrix)';
+                liveSensor.elements.dbgCalibration.style.color = '#16a34a';
+            }
+        }
+    } catch (e) {
+        console.error("Calibration error:", e);
+        alert("Failed to calibrate orientation.");
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '📐 Auto-Calibrate';
+    }
 }
 
-// Send window statistics to backend for prediction
+function toggleDebugMode() {
+    const card = liveSensor.elements.debugCard;
+    if (card) {
+        card.classList.toggle('hidden');
+    }
+}
+
 async function submitLivePrediction() {
-    const stats = computeWindowStats();
-    if (!stats) return;  // Not enough samples yet
+    if (liveSensor.accBuffer.length < 30) return;
+    
+    const accSamples = liveSensor.accBuffer.slice(-128);
+    const gyrSamples = liveSensor.gyrBuffer.slice(-128);
+    
+    const payload = {
+        acc: accSamples.map(s => ({ x: s.x, y: s.y, z: s.z })),
+        gyro: gyrSamples.map(s => ({ x: s.x, y: s.y, z: s.z })),
+        rotation_matrix: liveSensor.rotationMatrix
+    };
     
     try {
         const response = await fetch('/api/live-predict', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(stats)
+            body: JSON.stringify(payload)
         });
         
         const data = await response.json();
-        
-        if (data.error === 'INSUFFICIENT_MATCHES') {
-            // Keep previous result visible, just don't update
-            return;
-        }
-        
         if (response.ok && data.activity) {
-            // Show result display
+            
+            liveSensor.predictionHistory.push(data);
+            if (liveSensor.predictionHistory.length > 5) {
+                liveSensor.predictionHistory.shift();
+            }
+            
+            const smoothedResult = applyTemporalSmoothing(liveSensor.predictionHistory);
+            
             liveSensor.elements.resultPlaceholder.classList.add('hidden');
             liveSensor.elements.resultDisplay.classList.remove('hidden');
             
-            // Update activity
-            const emoji = activityEmojis[data.activity] || '🏃';
-            liveSensor.elements.activityName.textContent = `${emoji} ${data.activity.replace(/_/g, ' ')}`;
+            const isLowConfidence = smoothedResult.confidence < 0.70;
             
-            // Update confidence
-            const confPct = (data.confidence * 100).toFixed(1) + '%';
+            if (isLowConfidence) {
+                liveSensor.elements.activityName.textContent = '🔍 Detecting... (Low Confidence)';
+                liveSensor.elements.activityName.style.color = '#eab308';
+            } else {
+                const emoji = activityEmojis[smoothedResult.activity] || '🏃';
+                liveSensor.elements.activityName.textContent = `${emoji} ${smoothedResult.activity.replace(/_/g, ' ')}`;
+                liveSensor.elements.activityName.style.color = 'var(--text-primary)';
+                
+                addActivityHistoryEntry(smoothedResult.activity, smoothedResult.confidence);
+            }
+            
+            const confPct = (smoothedResult.confidence * 100).toFixed(1) + '%';
             liveSensor.elements.confidenceBar.style.width = confPct;
             liveSensor.elements.confidenceText.textContent = confPct;
             
-            // Update probability chart
-            renderProbabilityChart(liveSensor.elements.probChart, data.top_predictions, data.activity);
+            renderProbabilityChart(liveSensor.elements.probChart, smoothedResult.top_predictions, smoothedResult.activity);
+            if (liveSensor.elements.modelName) liveSensor.elements.modelName.textContent = data.model;
             
-            // Update meta
-            liveSensor.elements.matchedCount.textContent = data.matched_samples;
-            liveSensor.elements.modelName.textContent = data.model;
+            if (liveSensor.elements.dbgSamples) liveSensor.elements.dbgSamples.textContent = accSamples.length;
+            if (liveSensor.elements.dbgFeatCount) liveSensor.elements.dbgFeatCount.textContent = data.features_extracted_count || 138;
+            if (liveSensor.elements.dbgModel) liveSensor.elements.dbgModel.textContent = data.model;
         }
-        
     } catch (e) {
-        // Silent fail - keep trying on next interval
-        console.warn('Live prediction error:', e);
+        console.warn('Live prediction submit error:', e);
     }
+}
+
+function applyTemporalSmoothing(history) {
+    if (history.length === 1) return history[0];
+    
+    const probSums = {};
+    const count = history.length;
+    
+    history.forEach(item => {
+        item.top_predictions.forEach(p => {
+            probSums[p.activity] = (probSums[p.activity] || 0) + p.probability;
+        });
+    });
+    
+    const smoothedPredictions = [];
+    let bestActivity = '';
+    let maxProb = -1;
+    
+    for (const [act, sum] of Object.entries(probSums)) {
+        const avg = sum / count;
+        smoothedPredictions.push({ activity: act, probability: avg });
+        if (avg > maxProb) {
+            maxProb = avg;
+            bestActivity = act;
+        }
+    }
+    smoothedPredictions.sort((a, b) => b.probability - a.probability);
+    
+    return {
+        activity: bestActivity,
+        confidence: maxProb,
+        top_predictions: smoothedPredictions
+    };
+}
+
+function addActivityHistoryEntry(activity, confidence) {
+    const list = liveSensor.elements.historyList;
+    if (!list) return;
+    
+    const now = new Date();
+    const timeStr = now.toTimeString().split(' ')[0];
+    const emoji = activityEmojis[activity] || '🏃';
+    
+    if (liveSensor.activityHistory.length > 0) {
+        const last = liveSensor.activityHistory[0];
+        if (last.activity === activity && (now - last.time) < 3000) {
+            return;
+        }
+    }
+    
+    liveSensor.activityHistory.unshift({ activity, time: now });
+    if (liveSensor.activityHistory.length > 10) liveSensor.activityHistory.pop();
+    
+    const firstChild = list.querySelector('li');
+    if (firstChild && firstChild.style.fontStyle === 'italic') {
+        list.innerHTML = '';
+    }
+    
+    const li = document.createElement('li');
+    li.style.cssText = 'display:flex; justify-content:space-between; padding:0.3rem 0; border-bottom:1px solid #f1f5f9;';
+    li.innerHTML = `
+        <span><span style="font-family:monospace; color:#64748b; margin-right:0.5rem;">${timeStr}</span> <strong>${emoji} ${activity.replace(/_/g, ' ')}</strong></span>
+        <span style="color:#2563eb; font-weight:600;">${(confidence * 100).toFixed(1)}%</span>
+    `;
+    
+    list.insertBefore(li, list.firstChild);
 }
 
 function showLiveError(msg) {
     const el = liveSensor.elements.errorMsg;
-    el.textContent = msg;
-    el.classList.remove('hidden');
+    if (el) {
+        el.textContent = msg;
+        el.classList.remove('hidden');
+    }
 }
 
 // Initialize Application on Page Load

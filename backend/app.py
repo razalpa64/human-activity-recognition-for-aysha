@@ -1,12 +1,13 @@
 import os
 import traceback
+import numpy as np
 from flask import Flask, request, jsonify, send_from_directory
 from prediction import Predictor
 from train_model import train_and_evaluate
+from features import compute_rotation_matrix, TRAIN_STANDING_GRAVITY
 
 app = Flask(__name__, static_folder="../frontend", static_url_path="")
 
-# Global Predictor instance
 predictor = None
 init_error = None
 
@@ -22,7 +23,6 @@ def init_predictor():
         print(f"Failed to initialize predictor: {e}")
         traceback.print_exc()
 
-# Initialize predictor at startup
 init_predictor()
 
 @app.route('/')
@@ -32,8 +32,6 @@ def index():
 @app.route('/api/status', methods=['GET'])
 def get_status():
     global predictor, init_error
-    
-    # Verify dataset exists
     dataset_verified = False
     try:
         from preprocessing import find_dataset_path
@@ -50,7 +48,6 @@ def get_status():
             "error": None
         })
     else:
-        # Check if the files are just missing
         model_exists = os.path.exists(os.path.join(app.root_path, "..", "models", "har_model.pkl"))
         return jsonify({
             "status": "not_initialized",
@@ -64,14 +61,13 @@ def get_model_metadata():
     global predictor
     if predictor is None or predictor.metadata is None:
         return jsonify({"error": "Model metadata is not loaded. Train the model first."}), 404
-    
-    # We strip out the list of features to avoid huge JSON payload unless requested
+
     meta = dict(predictor.metadata)
     if 'features' in meta:
         meta['features_preview'] = meta['features'][:10]
-        # Keep features count, but exclude the full 561 features list to save bandwidth
+        meta['features_count'] = len(meta['features'])
         del meta['features']
-        
+
     return jsonify(meta)
 
 @app.route('/api/predict', methods=['POST'])
@@ -79,19 +75,18 @@ def predict_questionnaire():
     global predictor
     if predictor is None:
         return jsonify({"error": "Predictor is not initialized. Train the model first."}), 503
-        
+
     data = request.get_json() or {}
     intensity = data.get('intensity')
     stability = data.get('stability')
     body_position = data.get('body_position')
     rotation = data.get('rotation')
     movement_pattern = data.get('movement_pattern')
-    
-    # Validate inputs
+
     required = [intensity, stability, body_position, rotation, movement_pattern]
     if any(v is None for v in required):
         return jsonify({"error": "Invalid input. All 5 descriptors are required."}), 400
-        
+
     try:
         res = predictor.predict_questionnaire(
             intensity=intensity,
@@ -100,13 +95,11 @@ def predict_questionnaire():
             rotation=rotation,
             movement_pattern=movement_pattern
         )
-        
         if res is None:
             return jsonify({
                 "error": "INSUFFICIENT_MATCHES",
-                "message": "No sufficiently similar real UCI sensor recordings were found. Try changing one or more characteristics."
-            }), 200 # Return 200 with error code to handle gracefully
-            
+                "message": "No matching recordings found."
+            }), 200
         return jsonify(res)
     except Exception as e:
         traceback.print_exc()
@@ -117,7 +110,7 @@ def get_sample_prediction(sample_id):
     global predictor
     if predictor is None:
         return jsonify({"error": "Predictor is not initialized. Train the model first."}), 503
-        
+
     try:
         res = predictor.predict_sample(sample_id)
         return jsonify(res)
@@ -130,18 +123,17 @@ def get_sample_prediction(sample_id):
 @app.route('/api/activities', methods=['GET'])
 def get_activities():
     activities = [
-        {"id": "WALKING", "name": "Walking", "icon": "🚶", "description": "Dynamic movement with a cyclic, rhythmic gait, typically characterized by regular horizontal acceleration peaks."},
-        {"id": "WALKING_UPSTAIRS", "name": "Walking Upstairs", "icon": "⬆️", "description": "Vigorous upward traversal, showing elevated vertical acceleration and moderate rotation instability."},
-        {"id": "WALKING_DOWNSTAIRS", "name": "Walking Downstairs", "icon": "⬇️", "description": "Descent with high impact acceleration peaks, exhibiting lower stability and rhythmic rotation patterns."},
-        {"id": "SITTING", "name": "Sitting", "icon": "🪑", "description": "Static seated posture with the phone held vertical or tilted, marked by negligible body acceleration and stable gravity alignment."},
-        {"id": "STANDING", "name": "Standing", "icon": "🧍", "description": "Static upright posture, exhibiting minimal motion intensity and highly stable gravity alignment."},
-        {"id": "LAYING", "name": "Lying", "icon": "🛏️", "description": "Resting horizontal posture, characterized by distinct gravity orientation along the phone's horizontal axes and lack of motion."}
+        {"id": "WALKING", "name": "Walking", "icon": "🚶", "description": "Dynamic movement with a cyclic, rhythmic gait, characterized by regular acceleration peaks."},
+        {"id": "WALKING_UPSTAIRS", "name": "Walking Upstairs", "icon": "⬆️", "description": "Vigorous upward traversal showing elevated vertical acceleration."},
+        {"id": "WALKING_DOWNSTAIRS", "name": "Walking Downstairs", "icon": "⬇️", "description": "Descent with high impact acceleration peaks and lower stability."},
+        {"id": "SITTING", "name": "Sitting", "icon": "🪑", "description": "Static seated posture marked by negligible body acceleration and stable gravity alignment."},
+        {"id": "STANDING", "name": "Standing", "icon": "🧍", "description": "Static upright posture with minimal motion amplitude."},
+        {"id": "LAYING", "name": "Lying", "icon": "🛏️", "description": "Resting horizontal posture with gravity vector aligned along horizontal phone axes."}
     ]
     return jsonify(activities)
 
 @app.route('/api/results', methods=['GET'])
 def get_results_summary():
-    # Load comparison results from CSV if it exists
     results_csv_path = os.path.join(app.root_path, "..", "results", "final_results.csv")
     comparison = []
     if os.path.exists(results_csv_path):
@@ -172,22 +164,36 @@ def serve_results(filename):
     results_dir = os.path.abspath(os.path.join(app.root_path, "..", "results"))
     return send_from_directory(results_dir, filename)
 
+@app.route('/api/calibrate', methods=['POST'])
+def calibrate_orientation():
+    """
+    Accepts gravity vector from user standing/upright position:
+    { "x": float, "y": float, "z": float }
+    Computes and returns the 3x3 rotation matrix R to align with training standing orientation.
+    """
+    data = request.get_json() or {}
+    x = data.get('x', 0.0)
+    y = data.get('y', 0.0)
+    z = data.get('z', 0.0)
+
+    v_gravity = np.array([x, y, z], dtype=float)
+    R = compute_rotation_matrix(v_from=v_gravity, v_to=TRAIN_STANDING_GRAVITY)
+
+    return jsonify({
+        "status": "success",
+        "rotation_matrix": R.tolist(),
+        "calibrated_gravity": (np.dot(R, v_gravity / np.linalg.norm(v_gravity))).tolist() if np.linalg.norm(v_gravity) > 0 else [0, 0, 0]
+    })
+
 @app.route('/api/live-predict', methods=['POST'])
 def predict_live_sensor():
     """
-    Accepts computed aggregate statistics from a live sensor window captured in the browser.
-    These statistics are used to find the nearest matching UCI test observations, which are
-    then passed through the trained ML model. Raw sensor values never enter the model.
-    
-    Expected JSON body:
+    Accepts raw window of accelerometer and gyroscope readings captured in the browser.
+    Expected JSON:
     {
-        "acc_mean_x": float, "acc_mean_y": float, "acc_mean_z": float,
-        "acc_std_x": float, "acc_std_y": float, "acc_std_z": float,
-        "gyr_mean_x": float, "gyr_mean_y": float, "gyr_mean_z": float,
-        "gyr_std_x": float, "gyr_std_y": float, "gyr_std_z": float,
-        "acc_sma": float,
-        "gyr_sma": float,
-        "gravity_x": float, "gravity_y": float, "gravity_z": float
+        "acc": [ {"x": float, "y": float, "z": float}, ... ],
+        "gyro": [ {"x": float, "y": float, "z": float}, ... ],
+        "rotation_matrix": [[...], [...], [...]] (optional)
     }
     """
     global predictor
@@ -196,21 +202,36 @@ def predict_live_sensor():
 
     data = request.get_json() or {}
 
-    required_fields = [
-        'acc_sma', 'gyr_sma', 'gravity_x', 'gravity_y',
-        'acc_std_x', 'acc_std_y', 'acc_std_z'
-    ]
-    for field in required_fields:
-        if field not in data:
-            return jsonify({"error": f"Missing required field: {field}"}), 400
+    acc_list = data.get('acc', [])
+    gyro_list = data.get('gyro', [])
+    rotation_matrix = data.get('rotation_matrix', None)
+
+    if not acc_list or len(acc_list) < 10:
+        return jsonify({"error": "INSUFFICIENT_SAMPLES", "message": "Need at least 10 samples in window."}), 400
+
+    # Format arrays
+    acc_raw = np.array([[s.get('x', 0), s.get('y', 0), s.get('z', 0)] for s in acc_list], dtype=float)
+    if gyro_list and len(gyro_list) == len(acc_list):
+        gyro_raw = np.array([[s.get('x', 0), s.get('y', 0), s.get('z', 0)] for s in gyro_list], dtype=float)
+    else:
+        # Fallback if gyro not supplied
+        gyro_raw = np.zeros_like(acc_raw)
+
+    # Pad or truncate window to 128 samples if needed
+    target_samples = 128
+    if len(acc_raw) != target_samples:
+        t_orig = np.linspace(0, 1, len(acc_raw))
+        t_target = np.linspace(0, 1, target_samples)
+        acc_interp = np.zeros((target_samples, 3))
+        gyro_interp = np.zeros((target_samples, 3))
+        for col in range(3):
+            acc_interp[:, col] = np.interp(t_target, t_orig, acc_raw[:, col])
+            gyro_interp[:, col] = np.interp(t_target, t_orig, gyro_raw[:, col])
+        acc_raw = acc_interp
+        gyro_raw = gyro_interp
 
     try:
-        result = predictor.predict_from_live_stats(data)
-        if result is None:
-            return jsonify({
-                "error": "INSUFFICIENT_MATCHES",
-                "message": "No similar UCI recordings found for this sensor window. Try moving for a longer period."
-            }), 200
+        result = predictor.predict_from_raw_window(acc_raw, gyro_raw, rotation_matrix=rotation_matrix)
         return jsonify(result)
     except Exception as e:
         traceback.print_exc()
@@ -221,15 +242,13 @@ def run_training():
     try:
         success = train_and_evaluate()
         if success:
-            # Re-initialize predictor to load the new model and metadata
             init_predictor()
             return jsonify({"status": "success", "message": "Model retrained successfully."})
         else:
-            return jsonify({"status": "error", "message": "Model training failed. Check dataset path."}), 500
+            return jsonify({"status": "error", "message": "Model training failed."}), 500
     except Exception as e:
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
-    # Host on all interfaces on port 5000
     app.run(host="0.0.0.0", port=5000, debug=True)

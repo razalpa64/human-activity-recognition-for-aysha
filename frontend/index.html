@@ -326,19 +326,21 @@
         <section id="live-sensor" class="section live-section">
             <div class="section-header">
                 <h2 class="section-title">LIVE SENSOR PREDICTOR</h2>
-                <p class="section-subtitle">Use your smartphone's built-in accelerometer and gyroscope for real-time activity classification. A window of readings is analyzed to find the nearest UCI recordings, which are then classified by the trained ML model.</p>
+                <p class="section-subtitle">Real-time smartphone activity classification using a 128-sample sliding window, 50 Hz resampling, 3D gravity alignment, digital signal processing, and a trained ML model.</p>
             </div>
 
             <div class="live-pipeline-banner">
-                <div class="pipeline-step-mini">📱 Phone Sensor</div>
+                <div class="pipeline-step-mini">📱 Sensor Stream</div>
                 <div class="pipeline-arrow-mini">→</div>
-                <div class="pipeline-step-mini">📊 Window Statistics</div>
+                <div class="pipeline-step-mini">🔄 50Hz Resample</div>
                 <div class="pipeline-arrow-mini">→</div>
-                <div class="pipeline-step-mini">🔍 UCI Nearest Neighbors</div>
+                <div class="pipeline-step-mini">📐 3D Gravity Align</div>
                 <div class="pipeline-arrow-mini">→</div>
-                <div class="pipeline-step-mini">🤖 ML Model (561 Features)</div>
+                <div class="pipeline-step-mini">🔬 DSP (Filters + FFT)</div>
                 <div class="pipeline-arrow-mini">→</div>
-                <div class="pipeline-step-mini">✅ Prediction</div>
+                <div class="pipeline-step-mini">🤖 Scaled ML Model</div>
+                <div class="pipeline-arrow-mini">→</div>
+                <div class="pipeline-step-mini">✅ Smooth Prediction</div>
             </div>
 
             <div class="live-grid">
@@ -347,7 +349,7 @@
                     <!-- Permission state -->
                     <div id="live-permission-state">
                         <h3 class="panel-title">Sensor Access</h3>
-                        <p class="panel-desc">This mode uses your device's motion sensors via the browser DeviceMotion API. <strong>Open this page on your phone</strong> and grant permission to begin.</p>
+                        <p class="panel-desc">This mode uses your device's motion sensors via the browser DeviceMotion API. <strong>Open this page on your smartphone</strong> and grant sensor permission to begin.</p>
 
                         <div class="sensor-support-note" id="live-support-note">
                             <span id="live-support-text">Checking device sensor support...</span>
@@ -359,7 +361,30 @@
 
                     <!-- Active Sensor Feed -->
                     <div id="live-active-state" class="hidden">
-                        <h3 class="panel-title">Live Sensor Feed</h3>
+                        <div class="panel-header-flex" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                            <h3 class="panel-title" style="margin:0;">Sensor Status & Controls</h3>
+                            <button id="btn-toggle-debug" class="btn btn-secondary" style="padding:0.3rem 0.8rem; font-size:0.85rem;">🐛 Debug Mode</button>
+                        </div>
+
+                        <div class="status-summary-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-bottom:1rem;">
+                            <div class="status-chip" style="background:var(--bg-card); padding:0.5rem; border-radius:6px; border:1px solid #e2e8f0; font-size:0.85rem;">
+                                <span class="chip-label" style="color:#64748b; display:block;">Accelerometer</span>
+                                <span id="status-acc" class="chip-val" style="color:#16a34a; font-weight:600;">Connected</span>
+                            </div>
+                            <div class="status-chip" style="background:var(--bg-card); padding:0.5rem; border-radius:6px; border:1px solid #e2e8f0; font-size:0.85rem;">
+                                <span class="chip-label" style="color:#64748b; display:block;">Gyroscope</span>
+                                <span id="status-gyro" class="chip-val" style="color:#16a34a; font-weight:600;">Connected</span>
+                            </div>
+                            <div class="status-chip" style="background:var(--bg-card); padding:0.5rem; border-radius:6px; border:1px solid #e2e8f0; font-size:0.85rem;">
+                                <span class="chip-label" style="color:#64748b; display:block;">Sampling Rate</span>
+                                <span id="status-sampling" class="chip-val" style="color:#2563eb; font-weight:600;">Active (50 Hz)</span>
+                            </div>
+                            <div class="status-chip" style="background:var(--bg-card); padding:0.5rem; border-radius:6px; border:1px solid #e2e8f0; font-size:0.85rem;">
+                                <span class="chip-label" style="color:#64748b; display:block;">Window Samples</span>
+                                <span id="status-window-count" class="chip-val" style="font-family:monospace; font-weight:600;">128 / 128</span>
+                            </div>
+                        </div>
+
                         <div class="sensor-grid">
                             <div class="sensor-block">
                                 <div class="sensor-block-label">ACCELEROMETER  <span class="sensor-block-unit">m/s²</span></div>
@@ -407,24 +432,24 @@
                         <!-- Window accumulation indicator -->
                         <div class="window-accumulator">
                             <div class="window-label">
-                                <span>Sampling Window</span>
-                                <span id="live-sample-count">0 / 50 samples</span>
+                                <span>Sliding Window (2.56 seconds)</span>
+                                <span id="live-sample-count">0 / 128 samples</span>
                             </div>
                             <div class="window-bar-outer">
                                 <div id="live-window-bar" class="window-bar-inner"></div>
                             </div>
-                            <p class="window-hint">Keep a consistent motion for at least 1 second for best results.</p>
                         </div>
 
-                        <div class="live-controls-row">
-                            <button id="btn-live-toggle" class="btn btn-secondary btn-block">⏸ Pause Sensor</button>
+                        <div class="live-action-buttons" style="display:flex; gap:0.5rem; margin-top:1rem;">
+                            <button id="btn-live-toggle" class="btn btn-secondary" style="flex:1;">⏹ Stop Detection</button>
+                            <button id="btn-calibrate" class="btn btn-primary" style="flex:1;">📐 Auto-Calibrate</button>
                         </div>
                     </div>
                 </div>
 
                 <!-- Right Panel: Live Prediction Result -->
                 <div class="live-result-card">
-                    <h3 class="panel-title">Live Prediction</h3>
+                    <h3 class="panel-title">Current Activity</h3>
                     
                     <div id="live-result-placeholder" class="result-placeholder" style="min-height:300px;">
                         <div class="placeholder-icon">📡</div>
@@ -432,16 +457,15 @@
                     </div>
 
                     <div id="live-result-display" class="hidden">
-                        <!-- Auto-refresh badge -->
                         <div class="live-refresh-badge">
-                            <span class="live-dot"></span> Updating every 1.5s
+                            <span class="live-dot"></span> Real-time sliding window
                         </div>
 
                         <div class="live-result-header">
                             <span class="result-header-label">DETECTED ACTIVITY</span>
                             <h2 id="live-activity-name" class="result-activity-title">🚶 WALKING</h2>
                             <div class="confidence-container">
-                                <span class="confidence-label">Model Confidence</span>
+                                <span class="confidence-label">Confidence</span>
                                 <div class="confidence-bar-outer">
                                     <div id="live-confidence-bar" class="confidence-bar-inner" style="width: 0%"></div>
                                 </div>
@@ -454,15 +478,34 @@
                             <div id="live-probabilities-chart" class="probabilities-chart"></div>
                         </div>
 
-                        <div class="live-meta-row">
-                            <span>Matched UCI records: <strong id="live-matched">30</strong></span>
-                            <span>Model: <strong id="live-model-name">SVM</strong></span>
+                        <!-- Activity History Section -->
+                        <div class="activity-history-section" style="margin-top:1.5rem; padding-top:1rem; border-top:1px solid #e2e8f0;">
+                            <h4 class="details-section-title">Activity History</h4>
+                            <ul id="live-history-list" class="history-list" style="list-style:none; padding:0; margin:0; max-height:120px; overflow-y:auto; font-size:0.85rem;">
+                                <li style="color:#94a3b8; font-style:italic;">No activities logged yet.</li>
+                            </ul>
                         </div>
 
-                        <div class="live-disclaimer">
-                            <strong>How this works:</strong> Your device's motion is captured as raw accelerometer + gyroscope readings. The browser computes aggregate statistics (SMA, std-dev, gravity components) from a 50-sample window. These statistics are sent to the backend where a nearest-neighbor search finds the 30 most similar UCI test recordings. Those recordings' full 561-feature vectors are classified by the trained SVM. The raw readings from your phone <em>never</em> enter the model directly.
+                        <div class="live-meta-row" style="margin-top:1rem; display:flex; justify-content:space-between; font-size:0.85rem; color:#64748b;">
+                            <span>Feature Extractor: <strong>138 DSP Features</strong></span>
+                            <span>Model: <strong id="live-model-name">SVM</strong></span>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Debug Information Overlay -->
+            <div id="debug-info-card" class="debug-card hidden" style="margin-top:1.5rem; background:var(--bg-card); padding:1.2rem; border-radius:10px; border:1px solid #cbd5e1;">
+                <h3 class="panel-title">🐛 Debug & Pipeline Diagnostics</h3>
+                <div class="debug-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:1rem; font-size:0.85rem;">
+                    <div><span style="color:#64748b; display:block;">Samples Collected:</span><strong id="dbg-samples" style="font-family:monospace;">128</strong></div>
+                    <div><span style="color:#64748b; display:block;">Sampling Frequency:</span><strong id="dbg-rate" style="font-family:monospace;">50 Hz</strong></div>
+                    <div><span style="color:#64748b; display:block;">Window Size:</span><strong id="dbg-window" style="font-family:monospace;">128 samples (2.56s)</strong></div>
+                    <div><span style="color:#64748b; display:block;">Feature Count:</span><strong id="dbg-feat-count" style="font-family:monospace;">138</strong></div>
+                    <div><span style="color:#64748b; display:block;">Expected Feature Count:</span><strong id="dbg-feat-expected" style="font-family:monospace;">138</strong></div>
+                    <div><span style="color:#64748b; display:block;">Model:</span><strong id="dbg-model" style="font-family:monospace;">SVM</strong></div>
+                    <div><span style="color:#64748b; display:block;">Scaler:</span><strong id="dbg-scaler" style="font-family:monospace;">StandardScaler (Fitted)</strong></div>
+                    <div><span style="color:#64748b; display:block;">Orientation Calibration:</span><strong id="dbg-calibration" style="font-family:monospace;">Inactive</strong></div>
                 </div>
             </div>
         </section>
