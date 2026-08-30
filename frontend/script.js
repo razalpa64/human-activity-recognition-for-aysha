@@ -37,6 +37,12 @@ function getApiUrl(path) {
         return `${stored}${path.startsWith('/') ? path : '/' + path}`;
     }
     
+    // Auto-detect when running directly from local filesystem (file:// protocol)
+    if (window.location.protocol === 'file:' || !window.location.hostname) {
+        const localDefault = 'http://127.0.0.1:5000';
+        return `${localDefault}${path.startsWith('/') ? path : '/' + path}`;
+    }
+    
     // Auto-detect when hosted on GitHub Pages or custom domain
     const host = window.location.hostname;
     if (host.includes('github.io') || host.includes('invytra.in')) {
