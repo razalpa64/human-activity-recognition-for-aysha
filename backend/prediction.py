@@ -16,6 +16,8 @@ class Predictor:
         self.scaler = None
         self.metadata = None
         self.X_test = None
+        self.X_test_scaled = None
+        self.X_test_uci = None
         self.y_test = None
         self.desc_engine = None
         self.indexed_samples = []
@@ -35,10 +37,26 @@ class Predictor:
 
         dataset_path = find_dataset_path()
         try:
-            self.X_test = np.loadtxt(os.path.join(dataset_path, "test", "X_test.txt"))
+            self.X_test_uci = np.loadtxt(os.path.join(dataset_path, "test", "X_test.txt"))
             self.y_test = np.loadtxt(os.path.join(dataset_path, "test", "y_test.txt"))
             self.desc_engine = DescriptorEngine(dataset_path)
-            self.indexed_samples = self.desc_engine.build_test_index(self.X_test)
+            self.indexed_samples = self.desc_engine.build_test_index(self.X_test_uci)
+
+            # Load extracted feature matrix matching the trained model's feature space (138 features)
+            results_dir = os.path.join(os.path.dirname(self.backend_dir), "results")
+            test_cache_path = os.path.join(results_dir, "X_test_features.npy")
+
+            if os.path.exists(test_cache_path):
+                self.X_test = np.load(test_cache_path)
+            else:
+                from train_model import load_raw_signals, extract_features_dataset
+                total_acc_test, body_gyro_test = load_raw_signals(dataset_path, "test")
+                self.X_test, _ = extract_features_dataset(total_acc_test, body_gyro_test)
+
+            if self.scaler is not None:
+                self.X_test_scaled = self.scaler.transform(self.X_test)
+            else:
+                self.X_test_scaled = self.X_test
         except Exception as e:
             print(f"Warning: could not load raw UCI test samples: {e}")
 
@@ -112,10 +130,10 @@ class Predictor:
             max_score = scored_samples[0][0]
             matched_indices = [sid for sc, sid in scored_samples if sc >= max(1, max_score - 2)]
 
-        if not matched_indices or self.X_test is None:
+        if not matched_indices or self.X_test_scaled is None:
             return None
 
-        matched_X = self.X_test[matched_indices]
+        matched_X = self.X_test_scaled[matched_indices]
         probs = self.model.predict_proba(matched_X)
         avg_probs = np.mean(probs, axis=0)
 
@@ -143,10 +161,10 @@ class Predictor:
         }
 
     def predict_sample(self, sample_id):
-        if self.X_test is None or sample_id < 0 or sample_id >= len(self.X_test):
-            raise IndexError(f"Sample ID must be between 0 and {len(self.X_test) - 1}.")
+        if self.X_test_scaled is None or sample_id < 0 or sample_id >= len(self.X_test_scaled):
+            raise IndexError(f"Sample ID must be between 0 and {len(self.X_test_scaled) - 1}.")
 
-        X_row = self.X_test[sample_id].reshape(1, -1)
+        X_row = self.X_test_scaled[sample_id].reshape(1, -1)
         probs = self.model.predict_proba(X_row)[0]
         best_class_idx = np.argmax(probs)
 
@@ -171,7 +189,7 @@ class Predictor:
 
         return {
             "sample_id": int(sample_id),
-            "features_count": int(self.X_test.shape[1]),
+            "features_count": int(self.X_test_scaled.shape[1]),
             "predicted": predicted_activity,
             "confidence": confidence,
             "actual": actual_activity,
