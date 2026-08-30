@@ -14,6 +14,39 @@ const state = {
     isPredicting: false
 };
 
+// Server API URL Base helper (for GitHub Pages -> Render backend integration)
+function getStoredServerUrl() {
+    return localStorage.getItem('har_render_server_url') || '';
+}
+
+function setStoredServerUrl(url) {
+    if (url && url.trim().length > 0) {
+        let formatted = url.trim().replace(/\/+$/, '');
+        if (!formatted.startsWith('http://') && !formatted.startsWith('https://')) {
+            formatted = 'https://' + formatted;
+        }
+        localStorage.setItem('har_render_server_url', formatted);
+    } else {
+        localStorage.removeItem('har_render_server_url');
+    }
+}
+
+function getApiUrl(path) {
+    const stored = getStoredServerUrl();
+    if (stored) {
+        return `${stored}${path.startsWith('/') ? path : '/' + path}`;
+    }
+    
+    // Auto-detect when hosted on GitHub Pages or custom domain
+    const host = window.location.hostname;
+    if (host.includes('github.io') || host.includes('invytra.in')) {
+        const defaultRenderUrl = 'https://human-activity-recognition-for-aysha.onrender.com';
+        return `${defaultRenderUrl}${path.startsWith('/') ? path : '/' + path}`;
+    }
+    
+    return path;
+}
+
 // Activity Emojis Map
 const activityEmojis = {
     'WALKING': '🚶',
@@ -252,7 +285,7 @@ async function triggerCalibration() {
     const mz = recent.reduce((s, v) => s + v.z, 0) / recent.length;
     
     try {
-        const response = await fetch('/api/calibrate', {
+        const response = await fetch(getApiUrl('/api/calibrate'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ x: mx, y: my, z: mz })
@@ -296,7 +329,7 @@ async function submitLivePrediction() {
     };
     
     try {
-        const response = await fetch('/api/live-predict', {
+        const response = await fetch(getApiUrl('/api/live-predict'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -427,21 +460,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Main Initialization Sequence
 async function initApp() {
-    updateLoadingStep('step-backend', 'running', 'Connecting to backend...');
+    const currentApi = getApiUrl('/api/status');
+    updateLoadingStep('step-backend', 'running', `Connecting to backend (${currentApi})...`);
     
     try {
-        const response = await fetch('/api/status');
+        const response = await fetch(currentApi);
         const data = await response.json();
         
         // Step 1: Connection Check
         updateLoadingStep('step-backend', 'success', 'Connected to backend server.');
+        updateServerStatusUI(true, 'Server Connected');
         
         // Step 2: Dataset Check
         if (data.dataset_verified) {
             updateLoadingStep('step-dataset', 'success', 'UCI HAR Dataset found and verified.');
         } else {
             updateLoadingStep('step-dataset', 'error', 'UCI HAR Dataset folder is missing.');
-            showLoadingError('UCI HAR Dataset directory not found. Please verify "dataset/UCI HAR Dataset/" exists.');
+            showLoadingError('UCI HAR Dataset directory not found on backend. Please verify backend dataset directory.');
             return;
         }
 
@@ -467,7 +502,8 @@ async function initApp() {
     } catch (error) {
         console.error("Initialization error:", error);
         updateLoadingStep('step-backend', 'error', 'Failed to connect to backend.');
-        showLoadingError('Could not reach Flask server. Is backend/app.py running on port 5000?');
+        updateServerStatusUI(false, 'Disconnected');
+        showLoadingError(`Could not reach backend at ${currentApi}. Please verify your Render Backend URL.`);
     }
 }
 
@@ -475,7 +511,7 @@ async function initApp() {
 async function loadAppData() {
     try {
         // Fetch activities descriptions
-        const actRes = await fetch('/api/activities');
+        const actRes = await fetch(getApiUrl('/api/activities'));
         const actData = await actRes.json();
         
         // Map activities to a lookup object
@@ -510,7 +546,7 @@ async function loadAppData() {
 async function refreshDashboard() {
     try {
         // Load model metadata
-        const modelRes = await fetch('/api/model');
+        const modelRes = await fetch(getApiUrl('/api/model'));
         if (modelRes.ok) {
             const meta = await modelRes.json();
             
@@ -528,23 +564,97 @@ async function refreshDashboard() {
         }
 
         // Load visual plots
-        const resultsRes = await fetch('/api/results');
+        const resultsRes = await fetch(getApiUrl('/api/results'));
         if (resultsRes.ok) {
             const results = await resultsRes.json();
             
             // Set image sources with cache buster to force refresh
             const cb = '?t=' + new Date().getTime();
-            document.getElementById('img-confusion-matrix').src = results.plots.confusion_matrix + cb;
-            document.getElementById('img-model-comparison').src = results.plots.model_comparison + cb;
-            document.getElementById('img-activity-distribution').src = results.plots.activity_distribution + cb;
+            document.getElementById('img-confusion-matrix').src = getApiUrl(results.plots.confusion_matrix) + cb;
+            document.getElementById('img-model-comparison').src = getApiUrl(results.plots.model_comparison) + cb;
+            document.getElementById('img-activity-distribution').src = getApiUrl(results.plots.activity_distribution) + cb;
         }
     } catch (e) {
         console.error("Error refreshing dashboard:", e);
     }
 }
 
+function updateServerStatusUI(isConnected, labelText) {
+    const dot = document.getElementById('server-status-dot');
+    const text = document.getElementById('server-status-text');
+    if (dot) dot.style.backgroundColor = isConnected ? '#22c55e' : '#ef4444';
+    if (text) text.textContent = labelText || (isConnected ? 'Server Connected' : 'Server Off');
+}
+
+function initServerConfigHandlers() {
+    const openBtn = document.getElementById('btn-open-server-modal');
+    const closeBtn = document.getElementById('btn-close-server-modal');
+    const modal = document.getElementById('server-modal');
+    const inputUrl = document.getElementById('input-server-url');
+    const saveBtn = document.getElementById('btn-save-server-url');
+    const resetBtn = document.getElementById('btn-reset-server-url');
+    const saveUrlInitBtn = document.getElementById('btn-save-url-init');
+    const inputUrlInit = document.getElementById('input-render-url-init');
+
+    if (openBtn && modal) {
+        openBtn.addEventListener('click', () => {
+            if (inputUrl) inputUrl.value = getStoredServerUrl();
+            modal.classList.remove('hidden');
+        });
+    }
+
+    if (closeBtn && modal) {
+        closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
+    }
+
+    if (saveBtn) {
+        saveBtn.addEventListener('click', () => {
+            const val = inputUrl ? inputUrl.value : '';
+            setStoredServerUrl(val);
+            if (modal) modal.classList.add('hidden');
+            hideLoadingError();
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+                overlay.classList.remove('hidden');
+                overlay.style.opacity = '1';
+            }
+            initApp();
+        });
+    }
+
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            setStoredServerUrl('');
+            if (inputUrl) inputUrl.value = '';
+            if (modal) modal.classList.add('hidden');
+            hideLoadingError();
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+                overlay.classList.remove('hidden');
+                overlay.style.opacity = '1';
+            }
+            initApp();
+        });
+    }
+
+    if (saveUrlInitBtn) {
+        saveUrlInitBtn.addEventListener('click', () => {
+            const val = inputUrlInit ? inputUrlInit.value : '';
+            if (val) {
+                setStoredServerUrl(val);
+                hideLoadingError();
+                initApp();
+            } else {
+                alert("Please enter a valid Render backend URL (e.g. https://your-app.onrender.com).");
+            }
+        });
+    }
+}
+
 // Event Handlers Setup
 function setupEventHandlers() {
+    initServerConfigHandlers();
+
     // Retry initialization button
     document.getElementById('btn-retry-init').addEventListener('click', () => {
         hideLoadingError();
@@ -677,7 +787,7 @@ async function runQuestionnairePrediction() {
     document.getElementById('result-no-match').classList.add('hidden');
 
     try {
-        const response = await fetch('/api/predict', {
+        const response = await fetch(getApiUrl('/api/predict'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(state.questionnaire)
@@ -748,7 +858,7 @@ async function runSamplePrediction() {
     document.getElementById('sample-result-display').classList.add('hidden');
     
     try {
-        const response = await fetch(`/api/sample/${sampleId}`);
+        const response = await fetch(getApiUrl(`/api/sample/${sampleId}`));
         const data = await response.json();
         
         if (response.ok) {
@@ -825,7 +935,7 @@ async function triggerTraining(isFromLoadingOverlay = false) {
     }
 
     try {
-        const response = await fetch('/api/train', { method: 'POST' });
+        const response = await fetch(getApiUrl('/api/train'), { method: 'POST' });
         const data = await response.json();
         
         if (response.ok && data.status === 'success') {

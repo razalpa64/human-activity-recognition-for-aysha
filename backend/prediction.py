@@ -96,7 +96,23 @@ class Predictor:
                 sample['movement_pattern'] == movement_pattern):
                 matched_indices.append(sample['sample_id'])
 
-        if not matched_indices:
+        # Fallback to weighted partial matching if 0 exact matches found
+        if not matched_indices and self.indexed_samples:
+            scored_samples = []
+            for sample in self.indexed_samples:
+                score = 0
+                if sample['body_position'] == body_position: score += 4
+                if sample['intensity'] == intensity: score += 3
+                if sample['stability'] == stability: score += 2
+                if sample['rotation'] == rotation: score += 2
+                if sample['movement_pattern'] == movement_pattern: score += 2
+                scored_samples.append((score, sample['sample_id']))
+            
+            scored_samples.sort(key=lambda x: x[0], reverse=True)
+            max_score = scored_samples[0][0]
+            matched_indices = [sid for sc, sid in scored_samples if sc >= max(1, max_score - 2)]
+
+        if not matched_indices or self.X_test is None:
             return None
 
         matched_X = self.X_test[matched_indices]

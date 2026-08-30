@@ -2,11 +2,26 @@ import os
 import traceback
 import numpy as np
 from flask import Flask, request, jsonify, send_from_directory
+try:
+    from flask_cors import CORS
+    has_cors = True
+except ImportError:
+    has_cors = False
 from prediction import Predictor
 from train_model import train_and_evaluate
 from features import compute_rotation_matrix, TRAIN_STANDING_GRAVITY
 
 app = Flask(__name__, static_folder="../frontend", static_url_path="")
+if has_cors:
+    CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    return response
+
 
 predictor = None
 init_error = None

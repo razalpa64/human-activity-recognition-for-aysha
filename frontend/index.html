@@ -26,8 +26,15 @@
             </ul>
             <div id="loading-error" class="loading-error hidden">
                 <p id="error-message">Connection failed. Is the backend server running?</p>
-                <button id="btn-retry-init" class="btn btn-primary">Retry Initialization</button>
-                <button id="btn-train-init" class="btn btn-secondary hidden">Train Model Now</button>
+                <div class="server-config-input-group" style="margin: 1rem 0; text-align: left;">
+                    <label for="input-render-url-init" style="font-size: 0.85rem; color: #94a3b8; display: block; margin-bottom: 0.4rem;">Render Backend Server URL:</label>
+                    <input type="url" id="input-render-url-init" placeholder="https://your-app.onrender.com" style="width: 100%; padding: 0.6rem; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #f8fafc; font-size: 0.9rem;">
+                </div>
+                <div style="display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap;">
+                    <button id="btn-save-url-init" class="btn btn-primary">Connect Render Backend</button>
+                    <button id="btn-retry-init" class="btn btn-secondary">Retry</button>
+                    <button id="btn-train-init" class="btn btn-secondary hidden">Train Model Now</button>
+                </div>
             </div>
         </div>
     </div>
@@ -47,6 +54,10 @@
                 <a href="#model-dashboard" class="nav-link">Model</a>
                 <a href="#how-it-works" class="nav-link">How It Works</a>
                 <a href="#activities" class="nav-link">Activities</a>
+                <button id="btn-open-server-modal" class="btn btn-secondary" style="padding: 0.3rem 0.8rem; font-size: 0.8rem; border-radius: 20px; display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer; border: 1px solid rgba(255,255,255,0.2);">
+                    <span id="server-status-dot" style="width: 8px; height: 8px; border-radius: 50%; background-color: #eab308; display: inline-block;"></span>
+                    <span id="server-status-text">Server URL</span>
+                </button>
             </nav>
         </div>
     </header>
@@ -710,6 +721,31 @@
             <p class="footer-subtext">Developed using Flask, Scikit-Learn, and Vanilla CSS3.</p>
         </div>
     </footer>
+
+    <!-- Server Configuration Modal -->
+    <div id="server-modal" class="modal-overlay hidden" style="position: fixed; inset: 0; background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(4px); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 1rem;">
+        <div class="modal-box" style="background: #ffffff; color: #0f172a; border-radius: 12px; max-width: 500px; width: 100%; padding: 1.5rem; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3);">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.75rem;">
+                <h3 style="margin: 0; font-size: 1.2rem; color: #1e293b;">⚙️ Render Backend Server API Settings</h3>
+                <button id="btn-close-server-modal" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #64748b;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.9rem; color: #475569; margin-bottom: 1rem; line-height: 1.5;">
+                    If your frontend is hosted on GitHub Pages (or custom domain <code>human-activity-recognition.invytra.in</code>), enter your Render Flask API Backend URL below so predictions connect successfully.
+                </p>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label style="font-weight: 600; display: block; margin-bottom: 0.4rem; font-size: 0.9rem;">Render Backend URL:</label>
+                    <input type="url" id="input-server-url" placeholder="https://your-app.onrender.com" style="width: 100%; padding: 0.65rem 0.8rem; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.95rem; box-sizing: border-box;">
+                    <span style="font-size: 0.8rem; color: #64748b; display: block; margin-top: 0.4rem;">Default: Auto-detect (or current origin)</span>
+                </div>
+                <div id="server-test-status" style="font-size: 0.85rem; margin-bottom: 1rem; font-weight: 500;"></div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: space-between; gap: 0.5rem; pt-2;">
+                <button id="btn-reset-server-url" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.85rem;">Reset Default</button>
+                <button id="btn-save-server-url" class="btn btn-primary" style="padding: 0.5rem 1.2rem; font-size: 0.85rem;">Save & Connect</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Interactive script -->
     <script src="script.js"></script>

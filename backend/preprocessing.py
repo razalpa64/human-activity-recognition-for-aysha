@@ -6,12 +6,15 @@ def find_dataset_path():
     Finds the UCI HAR Dataset path in common locations.
     Returns the absolute path, or raises FileNotFoundError.
     """
+    base_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
-        "dataset/UCI HAR Dataset",
-        "../dataset/UCI HAR Dataset",
-        "../../dataset/UCI HAR Dataset",
-        "Human_Activity_Recognition/dataset/UCI HAR Dataset",
-        "../Human_Activity_Recognition/dataset/UCI HAR Dataset",
+        os.path.join(base_dir, "..", "dataset", "UCI HAR Dataset"),
+        os.path.join(base_dir, "dataset", "UCI HAR Dataset"),
+        os.path.abspath("dataset/UCI HAR Dataset"),
+        os.path.abspath("../dataset/UCI HAR Dataset"),
+        os.path.abspath("../../dataset/UCI HAR Dataset"),
+        os.path.abspath("Human_Activity_Recognition/dataset/UCI HAR Dataset"),
+        os.path.abspath("../Human_Activity_Recognition/dataset/UCI HAR Dataset"),
     ]
     for c in candidates:
         if os.path.exists(c) and os.path.isdir(c):
